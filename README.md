@@ -4,6 +4,8 @@ A .net standard library for reading and writing nginx configuration files.
 
 ## Quick start
 
+Install nuget package [![NuGet](https://img.shields.io/nuget/v/NginxConfigParser?style=flat-square)](https://www.nuget.org/packages/NginxConfigParser)
+
 ```cs
 // load from file
 var config = NginxConfig.LoadFrom("nginx.conf");
