@@ -45,7 +45,7 @@ namespace NginxConfigParser
         public GroupToken(GroupToken parent, string key, string value = null, string comment = null)
         {
             Key = key;
-            Value = value;
+            Value = value == null ? value : value.Trim();
             Comment = comment;
             Tokens = new List<IToken>();
             Parent = parent;
