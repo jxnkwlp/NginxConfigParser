@@ -3,11 +3,11 @@
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
         <Authors>Passingwind</Authors>
-        <Version>0.1.0</Version>
+        <Version>0.1.1</Version>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/jxnkwlp/NginxConfigParser</PackageProjectUrl>
         <RepositoryUrl>https://github.com/jxnkwlp/NginxConfigParser</RepositoryUrl>
-        <RepositoryType>github</RepositoryType>
+        <RepositoryType>Github</RepositoryType>
         <PackageTags>nginx</PackageTags>
         <Description>A .net standard library for reading and writing nginx configuration files.</Description>
         <Copyright>Passingwind</Copyright>

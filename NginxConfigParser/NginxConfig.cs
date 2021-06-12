@@ -149,8 +149,9 @@ namespace NginxConfigParser
         /// </summary>
         /// <param name="keyPath">The key path</param>
         /// <param name="value">The string value</param>
-        /// <param name="comment"></param>
-        public NginxConfig AddOrUpdate(string keyPath, string value, string comment = null)
+        /// <param name="addAsGroup">Add as group when key path not found</param>
+        /// <param name="comment">The comment</param>
+        public NginxConfig AddOrUpdate(string keyPath, string value, bool addAsGroup = false, string comment = null)
         {
             if (string.IsNullOrWhiteSpace(keyPath))
             {
@@ -199,10 +200,23 @@ namespace NginxConfigParser
                 else
                 {
                     if (i == length - 1)
+                    {
+                        IValueToken newToken = new ValueToken(groupToken, key, value, comment);
+
+                        if (addAsGroup)
+                        {
+                            newToken = new GroupToken(groupToken, key, value, comment);
+                        }
+
                         if (groupToken == null)
-                            tokens.Add(new ValueToken(null, key, value, comment));
+                        {
+                            tokens.Add(newToken);
+                        }
                         else
-                            groupToken.Add(key, value, comment);
+                        {
+                            groupToken.Add(newToken);
+                        }
+                    }
                     else
                     {
                         var newGroupToken = new GroupToken(groupToken, key);
@@ -218,7 +232,6 @@ namespace NginxConfigParser
                     }
                 }
             }
-
 
             return this;
         }
@@ -342,33 +355,32 @@ namespace NginxConfigParser
 
         private void WriteTokenString(IEnumerable<IToken> tokens, TextWriter textWriter, int level = 0)
         {
-            foreach (var token in tokens.Where(x => x is CommentToken || x is ValueToken))
+            var normalTokens = tokens.Where(x => x is CommentToken || x is ValueToken);
+            var groupTokens = tokens.Where(x => x is GroupToken);
+
+            foreach (var token in normalTokens)
             {
                 if (token is CommentToken comment)
                     textWriter.WriteLine(PadLeftSpace(comment.ToString(), level));
 
                 else if (token is ValueToken vaue)
                     textWriter.WriteLine(PadLeftSpace(vaue.ToString(), level));
-
             }
 
-            foreach (var token in tokens.Where(x => x is GroupToken))
+            foreach (GroupToken group in groupTokens)
             {
-                if (token is GroupToken group)
-                {
-                    textWriter.WriteLine();
+                //if (group.Parent != null)
+                textWriter.WriteLine();
 
-                    if (!string.IsNullOrWhiteSpace(group.Comment))
-                        textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ # {group.Comment}", level));
-                    else
-                        textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ ", level));
+                if (!string.IsNullOrWhiteSpace(group.Comment))
+                    textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ # {group.Comment}", level));
+                else
+                    textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ ", level));
 
-                    WriteTokenString(group.Tokens, textWriter, level + 1);
+                WriteTokenString(group.Tokens, textWriter, level + 1);
 
-                    textWriter.WriteLine(PadLeftSpace("}", level));
-                    textWriter.WriteLine();
-                }
-
+                // end 
+                textWriter.WriteLine(PadLeftSpace("}", level));
             }
         }
 
