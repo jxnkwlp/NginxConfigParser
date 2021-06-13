@@ -18,7 +18,7 @@ NginxConfig.Create()
     // add location
     .AddOrUpdate("http:server:location[1]", "~ ^/(images|javascript|js|css|flash|media|static)/", true)
     .AddOrUpdate("http:server:location[1]:root", "/app2")
-    .AddOrUpdate("http:server:location[1]:expires", "/1d")
+    .AddOrUpdate("http:server:location[1]:expires", "1d")
     // add location
     .AddOrUpdate("http:server:location[2]", "~/api", true, "api")
     .AddOrUpdate("http:server:location[2]:proxy_pass", "http://server.com")
@@ -41,7 +41,7 @@ http   {
 
     location  ~ ^/(images|javascript|js|css|flash|media|static)/ {
       root  /app2;
-      expires  /1d;
+      expires  1d;
     }
 
     location  ~/api { # api
