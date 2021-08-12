@@ -314,7 +314,7 @@ namespace NginxConfigParser
                 throw new ArgumentException($"'{nameof(fileName)}' cannot be null or whitespace.", nameof(fileName));
             }
 
-            Save(fileName, Encoding.UTF8);
+            Save(fileName, Encoding.Default);
         }
 
         /// <summary>
@@ -334,10 +334,15 @@ namespace NginxConfigParser
                 throw new ArgumentNullException(nameof(encoding));
             }
 
-            StringWriter sw = new StringWriter(new StringBuilder());
-            WriteTokenString(_tokens, sw, 0);
-
-            File.WriteAllText(fileName, sw.ToString(), encoding);
+            using (StringWriter sw = new StringWriter(new StringBuilder()))
+            {
+                WriteTokenString(_tokens, sw, 0);
+                using (StreamWriter fsWriter = new StreamWriter(fileName,false,encoding))
+                {
+                    fsWriter.NewLine = Environment.NewLine;
+                    fsWriter.Write(sw);
+                }
+            }
         }
 
         /// <summary>
