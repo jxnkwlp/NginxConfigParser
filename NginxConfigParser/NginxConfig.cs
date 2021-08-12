@@ -335,7 +335,6 @@ namespace NginxConfigParser
             }
 
             StringWriter sw = new StringWriter(new StringBuilder());
-
             WriteTokenString(_tokens, sw, 0);
 
             File.WriteAllText(fileName, sw.ToString(), encoding);
@@ -357,7 +356,7 @@ namespace NginxConfigParser
         {
             var normalTokens = tokens.Where(x => x is CommentToken || x is ValueToken);
             var groupTokens = tokens.Where(x => x is GroupToken);
-
+            textWriter.NewLine = Environment.NewLine;
             foreach (var token in normalTokens)
             {
                 if (token is CommentToken comment)
@@ -458,7 +457,7 @@ namespace NginxConfigParser
 
         private (string key, int index) ResolveKey(string key)
         {
-            if (!Regex.IsMatch(key, @"^[\w]+(\[\d\])?$"))
+            if (!Regex.IsMatch(key, @"^[\w]+(\[\d+\])?$"))
             {
                 throw new Exception($"The key '{key}' format is incorrect");
             }
