@@ -1,6 +1,8 @@
 name: build and pack
 
 on:
+  push:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
