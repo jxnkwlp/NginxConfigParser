@@ -1,6 +1,8 @@
 name: build and pack
 
 on:
+  push:
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -40,12 +42,15 @@ jobs:
       run: dotnet build --no-restore -c Release
 
     - name: Pack
+      if: ${{ env.GITCI_NEXT_VERSION }}
       run: dotnet pack --no-build --no-restore -c Release /p:Version="${{env.GITCI_NEXT_VERSION}}" -o ./
 
     - name: Push package
+      if: ${{ env.GITCI_NEXT_VERSION }}
       run: dotnet nuget push ./*.nupkg --skip-duplicate --api-key ${{secrets.NUGET_TOKEN}} --source https://api.nuget.org/v3/index.json
 
     - name: Create Release
+      if: ${{ env.GITCI_NEXT_VERSION }}
       uses: ncipollo/release-action@v1
       with:
           tag: v${{env.GITCI_NEXT_VERSION}}
