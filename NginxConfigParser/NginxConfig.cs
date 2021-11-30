@@ -314,7 +314,7 @@ namespace NginxConfigParser
                 throw new ArgumentException($"'{nameof(fileName)}' cannot be null or whitespace.", nameof(fileName));
             }
 
-            Save(fileName, Encoding.UTF8);
+            Save(fileName, Encoding.Default);
         }
 
         /// <summary>
@@ -334,11 +334,15 @@ namespace NginxConfigParser
                 throw new ArgumentNullException(nameof(encoding));
             }
 
-            StringWriter sw = new StringWriter(new StringBuilder());
-
-            WriteTokenString(_tokens, sw, 0);
-
-            File.WriteAllText(fileName, sw.ToString(), encoding);
+            using (StringWriter sw = new StringWriter(new StringBuilder()))
+            {
+                WriteTokenString(_tokens, sw, 0);
+                using (StreamWriter fsWriter = new StreamWriter(fileName,false,encoding))
+                {
+                    fsWriter.NewLine = Environment.NewLine;
+                    fsWriter.Write(sw);
+                }
+            }
         }
 
         /// <summary>
@@ -357,7 +361,7 @@ namespace NginxConfigParser
         {
             var normalTokens = tokens.Where(x => x is CommentToken || x is ValueToken);
             var groupTokens = tokens.Where(x => x is GroupToken);
-
+            textWriter.NewLine = Environment.NewLine;
             foreach (var token in normalTokens)
             {
                 if (token is CommentToken comment)
@@ -458,7 +462,7 @@ namespace NginxConfigParser
 
         private (string key, int index) ResolveKey(string key)
         {
-            if (!Regex.IsMatch(key, @"^[\w]+(\[\d\])?$"))
+            if (!Regex.IsMatch(key, @"^[\w]+(\[\d+\])?$"))
             {
                 throw new Exception($"The key '{key}' format is incorrect");
             }
