@@ -56,6 +56,10 @@ namespace NginxConfigParser
             var groupEndSymbol = text.IndexOf('}');
 
             //var temp = text.Split(new string[] { " ", ";", "{", "}" }, System.StringSplitOptions.RemoveEmptyEntries).ToList();
+            if (text.Length == 0)
+            {
+                return;
+            }
 
             if (text[0] == '#')
             {
