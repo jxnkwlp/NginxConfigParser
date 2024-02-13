@@ -99,5 +99,3 @@ string configContent = config.ToString();
 ## Buy Me A Coffee
 
 [!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/jxnkwlp)
-
-<img src="./docs/weixin-thanks.jpg" width="300" />
