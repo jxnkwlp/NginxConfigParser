@@ -1,9 +1,8 @@
-﻿namespace NginxConfigParser
+﻿namespace NginxConfigParser;
+
+internal enum TokenType
 {
-    internal enum TokenType
-    {
-        Comment,
-        KeyValue,
-        Group,
-    }
+    Comment = 0,
+    KeyValue = 1,
+    Group = 2,
 }

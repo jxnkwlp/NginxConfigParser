@@ -5,91 +5,144 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace NginxConfigParser
+namespace NginxConfigParser;
+
+/// <summary>
+///  Represents an nginx configuration file operation object.
+/// </summary>
+public class NginxConfig
 {
-    /// <summary>
-    ///  Represents an nginx configuration file operation object.
-    /// </summary>
-    public class NginxConfig
+    private static readonly Regex KeyRegex = new(@"^[\w]+(\[\d+\])?$");
+
+    private readonly Parser _parser;
+
+    private IList<IToken> _tokens = new List<IToken>();
+
+    protected NginxConfig(Parser parser)
     {
-        private readonly Parser _parser;
+        _parser = parser;
 
-        private IList<IToken> _tokens = new List<IToken>();
+        Initial();
+    }
 
-        protected NginxConfig(Parser parser)
+    /// <summary>
+    ///  Create an new
+    /// </summary>
+    public static NginxConfig Create()
+    {
+        var parser = new Parser(string.Empty);
+
+        return new NginxConfig(parser);
+    }
+
+    /// <summary>
+    ///  Load from specific file
+    /// </summary>
+    /// <param name="fileName">The file path</param>
+    /// <returns><see cref="NginxConfig"/></returns>
+    /// <exception cref="ArgumentException"></exception>
+    /// <exception cref="FileNotFoundException"></exception>
+    public static NginxConfig LoadFrom(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
         {
-            _parser = parser;
-
-            Initial();
+            throw new ArgumentException($"'{nameof(fileName)}' cannot be null or whitespace.", nameof(fileName));
         }
 
-        /// <summary>
-        ///  Create an new
-        /// </summary> 
-        public static NginxConfig Create()
+        if (!File.Exists(fileName))
         {
-            var parser = new Parser(string.Empty);
-
-            return new NginxConfig(parser);
+            throw new FileNotFoundException(fileName);
         }
 
-        /// <summary>
-        ///  Load from specific file
-        /// </summary>
-        /// <param name="fileName">The file path</param>
-        /// <returns><see cref="NginxConfig"/></returns>
-        public static NginxConfig LoadFrom(string fileName)
+        // var fs = new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite);
+
+        var content = File.ReadAllText(fileName);
+
+        return Load(content);
+    }
+
+    /// <summary>
+    ///  Load from file content
+    /// </summary>
+    /// <param name="content">The string of file content</param>
+    /// <returns><see cref="NginxConfig"/></returns>
+    /// <exception cref="ArgumentNullException"></exception>
+    public static NginxConfig Load(string content)
+    {
+        if (content is null)
         {
-            if (string.IsNullOrWhiteSpace(fileName))
-            {
-                throw new ArgumentException($"'{nameof(fileName)}' cannot be null or whitespace.", nameof(fileName));
-            }
-
-            if (!File.Exists(fileName))
-            {
-                throw new FileNotFoundException(fileName);
-            }
-
-            // var fs = new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite);
-
-            var content = File.ReadAllText(fileName);
-
-            return Load(content);
+            throw new ArgumentNullException(nameof(content));
         }
 
-        /// <summary>
-        ///  Load from file content
-        /// </summary>
-        /// <param name="content">The string of file content</param>
-        /// <returns><see cref="NginxConfig"/></returns>
-        public static NginxConfig Load(string content)
+        var parser = new Parser(content);
+
+        return new NginxConfig(parser);
+    }
+
+    private void Initial()
+    {
+        _parser.Parse();
+        _tokens = _parser.GetTokens().ToList();
+    }
+
+    /// <summary>
+    ///  Get all values
+    /// </summary>
+    public IEnumerable<IToken> GetTokens() => _tokens;
+
+    /// <summary>
+    ///  Read value from given the key path.
+    ///  if the key not exist, will return null.
+    /// </summary>
+    /// <exception cref="ArgumentException"></exception>
+    public IValueToken GetToken(string keyPath)
+    {
+        if (string.IsNullOrWhiteSpace(keyPath))
         {
-            if (content is null)
-            {
-                throw new ArgumentNullException(nameof(content));
-            }
-
-            var parser = new Parser(content);
-
-            return new NginxConfig(parser);
+            throw new ArgumentException($"'{nameof(keyPath)}' cannot be null or whitespace.", nameof(keyPath));
         }
 
-        private void Initial()
+        return GetTokenFromPath(keyPath);
+    }
+
+    /// <summary>
+    ///  Read value list from given the key path.
+    /// </summary>
+    /// <exception cref="ArgumentException"></exception>
+    public IList<IValueToken> GetTokens(string keyPath)
+    {
+        if (string.IsNullOrWhiteSpace(keyPath))
         {
-            _parser.Parse();
-            _tokens = _parser.GetTokens().ToList();
+            throw new ArgumentException($"'{nameof(keyPath)}' cannot be null or whitespace.", nameof(keyPath));
         }
 
-        /// <summary>
-        ///  Get all values
-        /// </summary> 
-        public IEnumerable<IToken> GetTokens() => _tokens;
+        return GetTokensFromPath(keyPath);
+    }
 
-        /// <summary>
-        ///  Read value from given the key path.
-        ///  if the key not exist, will return null.
-        /// </summary> 
-        public IValueToken GetToken(string keyPath)
+    /// <summary>
+    ///  Read all values from specific group key
+    /// </summary>
+    /// <exception cref="ArgumentException"></exception>
+    public GroupToken GetGroup(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new ArgumentException($"'{nameof(key)}' cannot be null or whitespace.", nameof(key));
+        }
+
+        var find = _tokens.Where(x => x is GroupToken).FirstOrDefault(x => ((IValueToken)x).Key == key);
+
+        return find as GroupToken;
+    }
+
+    /// <summary>
+    ///  Read value from given the key path.
+    ///  if the key not exist, will return null.
+    /// </summary>
+    /// <exception cref="ArgumentException"></exception>
+    public IValueToken this[string keyPath]
+    {
+        get
         {
             if (string.IsNullOrWhiteSpace(keyPath))
             {
@@ -98,394 +151,361 @@ namespace NginxConfigParser
 
             return GetTokenFromPath(keyPath);
         }
+    }
 
-        /// <summary>
-        ///  Read value list from given the key path. 
-        /// </summary> 
-        public IList<IValueToken> GetTokens(string keyPath)
+    /// <summary>
+    ///  Add or update value by the key path
+    /// </summary>
+    /// <param name="keyPath">The key path</param>
+    /// <param name="value">The string value</param>
+    /// <param name="addAsGroup">Add as group when key path not found</param>
+    /// <param name="comment">The comment</param>
+    /// <exception cref="ArgumentException"></exception>
+    /// <exception cref="IndexOutOfRangeException"></exception>
+    public NginxConfig AddOrUpdate(string keyPath, string value, bool addAsGroup = false, string comment = null)
+    {
+        if (string.IsNullOrWhiteSpace(keyPath))
         {
-            if (string.IsNullOrWhiteSpace(keyPath))
-            {
-                throw new ArgumentException($"'{nameof(keyPath)}' cannot be null or whitespace.", nameof(keyPath));
-            }
-
-            return GetTokensFromPath(keyPath);
+            throw new ArgumentException($"'{nameof(keyPath)}' cannot be null or whitespace.", nameof(keyPath));
         }
 
-        /// <summary>
-        ///  Read all values from specific group key
-        /// </summary> 
-        public GroupToken GetGroup(string key)
+        var tokens = _tokens;
+
+        var paths = keyPath.Split(':');
+
+        GroupToken groupToken = null;
+
+        int length = paths.Length;
+
+        for (int i = 0; i < length; i++)
         {
-            if (string.IsNullOrWhiteSpace(key))
+            var (key, index) = ResolveKey(paths[i]);
+
+            IToken find = null;
+            IEnumerable<IToken> findTokens;
+            if (groupToken == null)
+                findTokens = FindTokens(tokens, key);
+            else
+                findTokens = FindTokens(groupToken.Tokens, key);
+
+            if (index > findTokens.Count())
+                throw new IndexOutOfRangeException($"The key '{key}' index must be <= {findTokens.Count()}");
+
+            if (index <= findTokens.Count() - 1)
+                find = findTokens.ElementAt(index);
+
+            if (find != null)
             {
-                throw new ArgumentException($"'{nameof(key)}' cannot be null or whitespace.", nameof(key));
-            }
-
-            var find = _tokens.Where(x => x is GroupToken).FirstOrDefault(x => ((IValueToken)x).Key == key);
-
-            return find as GroupToken;
-        }
-
-        /// <summary>
-        ///  Read value from given the key path.
-        ///  if the key not exist, will return null.
-        /// </summary> 
-        public IValueToken this[string keyPath]
-        {
-            get
-            {
-                if (string.IsNullOrWhiteSpace(keyPath))
-                {
-                    throw new ArgumentException($"'{nameof(keyPath)}' cannot be null or whitespace.", nameof(keyPath));
-                }
-
-                return GetTokenFromPath(keyPath);
-            }
-        }
-
-        /// <summary>
-        ///  Add or update value by the key path
-        /// </summary>
-        /// <param name="keyPath">The key path</param>
-        /// <param name="value">The string value</param>
-        /// <param name="addAsGroup">Add as group when key path not found</param>
-        /// <param name="comment">The comment</param>
-        public NginxConfig AddOrUpdate(string keyPath, string value, bool addAsGroup = false, string comment = null)
-        {
-            if (string.IsNullOrWhiteSpace(keyPath))
-            {
-                throw new ArgumentException($"'{nameof(keyPath)}' cannot be null or whitespace.", nameof(keyPath));
-            }
-
-            var tokens = _tokens;
-
-            var paths = keyPath.Split(':');
-
-            GroupToken groupToken = null;
-
-            int length = paths.Length;
-
-            for (int i = 0; i < length; i++)
-            {
-                var (key, index) = ResolveKey(paths[i]);
-
-                IToken find = null;
-                IEnumerable<IToken> findTokens;
-                if (groupToken == null)
-                    findTokens = tokens.Where(x => x is IValueToken).Where(x => ((IValueToken)x).Key == key);
-                else
-                    findTokens = groupToken.Tokens.Where(x => x is IValueToken).Where(x => ((IValueToken)x).Key == key);
-
-                if (index > findTokens.Count())
-                    throw new IndexOutOfRangeException($"The key '{key}' index must be <= {findTokens.Count()}");
-
-                if (index <= findTokens.Count() - 1)
-                    find = findTokens.ElementAt(index);
-
-                if (find != null)
-                {
-                    if (find is ValueToken valueToken)
-                        if (i == length - 1)
-                        {
-                            valueToken.Value = value;
-                            valueToken.Comment = comment;
-                            break;
-                        }
-                        else
-                            throw new System.Exception($"The token '{find}' has been exist.");
-
-                    groupToken = (GroupToken)find;
-                }
-                else
+                if (find is ValueToken valueToken)
                 {
                     if (i == length - 1)
                     {
-                        IValueToken newToken = new ValueToken(groupToken, key, value, comment);
-
-                        if (addAsGroup)
-                        {
-                            newToken = new GroupToken(groupToken, key, value, comment);
-                        }
-
-                        if (groupToken == null)
-                        {
-                            tokens.Add(newToken);
-                        }
-                        else
-                        {
-                            groupToken.Add(newToken);
-                        }
-                    }
-                    else
-                    {
-                        var newGroupToken = new GroupToken(groupToken, key);
-                        if (groupToken == null)
-                        {
-                            tokens.Add(newGroupToken);
-                        }
-                        else
-                        {
-                            groupToken.Add(newGroupToken);
-                        }
-                        groupToken = newGroupToken;
-                    }
-                }
-            }
-
-            return this;
-        }
-
-        /// <summary>
-        ///  Remove the value by key path
-        /// </summary> 
-        public NginxConfig Remove(string keyPath)
-        {
-            if (string.IsNullOrWhiteSpace(keyPath))
-            {
-                throw new ArgumentException($"'{nameof(keyPath)}' cannot be null or whitespace.", nameof(keyPath));
-            }
-
-            var tokens = _tokens;
-
-            var paths = keyPath.Split(':');
-
-            GroupToken groupToken = null;
-
-            int length = paths.Length;
-
-            for (int i = 0; i < length; i++)
-            {
-                var (key, index) = ResolveKey(paths[i]);
-
-                IToken find = null;
-                IEnumerable<IToken> findTokens;
-
-                if (groupToken == null)
-                    findTokens = tokens.Where(x => x is IValueToken).Where(x => ((IValueToken)x).Key == key);
-                else
-                    findTokens = groupToken.Tokens.Where(x => x is IValueToken).Where(x => ((IValueToken)x).Key == key);
-
-                if (i == length - 1)
-                {
-                    // remove
-                    if (groupToken == null)
-                        findTokens.ToList().ForEach(item =>
-                        {
-                            tokens.Remove(item);
-                        });
-                    else
-                        findTokens.ToList().ForEach(item =>
-                        {
-                            groupToken.Tokens.Remove(item);
-                        });
-                }
-                else
-                {
-                    if (index > findTokens.Count())
-                        throw new IndexOutOfRangeException($"The key '{key}' index must be <= {findTokens.Count()}");
-
-                    if (index <= findTokens.Count() - 1)
-                        find = findTokens.ElementAt(index);
-
-                    if (find != null && find is GroupToken)
-                    {
-                        groupToken = (GroupToken)find;
-                    }
-                    else
-                    {
-                        // not found , break.
+                        valueToken.Value = value;
+                        valueToken.Comment = comment;
                         break;
                     }
+
+                    throw new Exception($"The token '{find}' already exists.");
                 }
+
+                groupToken = (GroupToken)find;
             }
-
-            return this;
-        }
-
-        /// <summary>
-        ///  Save the configuration content to specific file
-        /// </summary>
-        /// <param name="fileName">The file path</param>
-        public void Save(string fileName)
-        {
-            if (string.IsNullOrWhiteSpace(fileName))
+            else if (i == length - 1)
             {
-                throw new ArgumentException($"'{nameof(fileName)}' cannot be null or whitespace.", nameof(fileName));
-            }
+                IValueToken newToken = new ValueToken(groupToken, key, value, comment);
 
-            Save(fileName, Encoding.Default);
-        }
-
-        /// <summary>
-        ///  Save the configuration content to specific file
-        /// </summary>
-        /// <param name="fileName">The file path</param>
-        /// <param name="encoding">The file encoding</param>
-        public void Save(string fileName, Encoding encoding)
-        {
-            if (string.IsNullOrWhiteSpace(fileName))
-            {
-                throw new ArgumentException($"'{nameof(fileName)}' cannot be null or whitespace.", nameof(fileName));
-            }
-
-            if (encoding is null)
-            {
-                throw new ArgumentNullException(nameof(encoding));
-            }
-
-            using (StringWriter sw = new StringWriter(new StringBuilder()))
-            {
-                WriteTokenString(_tokens, sw, 0);
-                using (StreamWriter fsWriter = new StreamWriter(fileName,false,encoding))
+                if (addAsGroup)
                 {
-                    fsWriter.NewLine = Environment.NewLine;
-                    fsWriter.Write(sw);
+                    newToken = new GroupToken(groupToken, key, value, comment);
                 }
-            }
-        }
 
-        /// <summary>
-        ///  Return configuration file content
-        /// </summary> 
-        public override string ToString()
-        {
-            StringWriter sw = new StringWriter(new StringBuilder());
-
-            WriteTokenString(_tokens, sw, 0);
-
-            return sw.GetStringBuilder().ToString();
-        }
-
-        private void WriteTokenString(IEnumerable<IToken> tokens, TextWriter textWriter, int level = 0)
-        {
-            var normalTokens = tokens.Where(x => x is CommentToken || x is ValueToken);
-            var groupTokens = tokens.Where(x => x is GroupToken);
-            textWriter.NewLine = Environment.NewLine;
-            foreach (var token in normalTokens)
-            {
-                if (token is CommentToken comment)
-                    textWriter.WriteLine(PadLeftSpace(comment.ToString(), level));
-
-                else if (token is ValueToken vaue)
-                    textWriter.WriteLine(PadLeftSpace(vaue.ToString(), level));
-            }
-
-            foreach (GroupToken group in groupTokens)
-            {
-                //if (group.Parent != null)
-                textWriter.WriteLine();
-
-                if (!string.IsNullOrWhiteSpace(group.Comment))
-                    textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ # {group.Comment}", level));
-                else
-                    textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ ", level));
-
-                WriteTokenString(group.Tokens, textWriter, level + 1);
-
-                // end 
-                textWriter.WriteLine(PadLeftSpace("}", level));
-            }
-        }
-
-        private string PadLeftSpace(string text, int level = 0)
-        {
-            return text.PadLeft(text.Length + level * 2, ' ');
-        }
-
-        private IValueToken GetTokenFromPath(string keyPath)
-        {
-            var tokens = _tokens;
-
-            var paths = keyPath.Split(':');
-
-            IValueToken result = null;
-
-            foreach (var key in paths)
-            {
-                var (keyName, index) = ResolveKey(key);
-
-                result = FindToken(tokens, keyName, index);
-                if (result != null)
+                if (groupToken == null)
                 {
-                    if (result is GroupToken groupToken)
-                        tokens = groupToken.Tokens.ToList();
-                }
-                else
-                    break;
-            }
-
-            return result;
-        }
-
-        private IList<IValueToken> GetTokensFromPath(string keyPath)
-        {
-            var tokens = _tokens;
-
-            var paths = keyPath.Split(':');
-
-            IEnumerable<IValueToken> result = null;
-
-            IValueToken current = null;
-
-            for (int i = 0; i < paths.Length; i++)
-            {
-                var (keyName, index) = ResolveKey(paths[i]);
-
-                if (i == paths.Length - 1)
-                {
-                    result = FindTokens(tokens, keyName);
+                    tokens.Add(newToken);
                 }
                 else
                 {
-                    current = FindToken(tokens, keyName, index);
+                    groupToken.Add(newToken);
+                }
+            }
+            else
+            {
+                var newGroupToken = new GroupToken(groupToken, key);
+                if (groupToken == null)
+                {
+                    tokens.Add(newGroupToken);
+                }
+                else
+                {
+                    groupToken.Add(newGroupToken);
+                }
+                groupToken = newGroupToken;
+            }
+        }
 
-                    if (current != null && current is GroupToken groupToken)
+        return this;
+    }
+
+    /// <summary>
+    ///  Remove the value by key path
+    /// </summary>
+    /// <exception cref="ArgumentException"></exception>
+    /// <exception cref="IndexOutOfRangeException"></exception>
+    public NginxConfig Remove(string keyPath)
+    {
+        if (string.IsNullOrWhiteSpace(keyPath))
+        {
+            throw new ArgumentException($"'{nameof(keyPath)}' cannot be null or whitespace.", nameof(keyPath));
+        }
+
+        var tokens = _tokens;
+
+        var paths = keyPath.Split(':');
+
+        GroupToken groupToken = null;
+
+        int length = paths.Length;
+
+        for (int i = 0; i < length; i++)
+        {
+            var (key, index) = ResolveKey(paths[i]);
+
+            IToken find = null;
+            IEnumerable<IToken> findTokens;
+
+            if (groupToken == null)
+                findTokens = FindTokens(tokens, key);
+            else
+                findTokens = FindTokens(groupToken.Tokens, key);
+
+            if (i == length - 1)
+            {
+                // remove
+                if (groupToken == null)
+                {
+                    foreach (var item in findTokens)
                     {
-                        tokens = groupToken.Tokens.ToList();
+                        tokens.Remove(item);
+                    }
+                }
+                else
+                {
+                    foreach (var item in findTokens)
+                    {
+                        groupToken.Tokens.Remove(item);
                     }
                 }
             }
-
-            return result.ToList();
-        }
-
-        private static IValueToken FindToken(IEnumerable<IToken> tokens, string key, int index = 0)
-        {
-            return tokens.Where(x => x is IValueToken).Where(x => ((IValueToken)x).Key == key).ElementAtOrDefault(index) as IValueToken;
-        }
-
-        private static IEnumerable<IValueToken> FindTokens(IEnumerable<IToken> tokens, string key)
-        {
-            return tokens.Where(x => x is IValueToken).Where(x => ((IValueToken)x).Key == key).Cast<IValueToken>();
-        }
-
-        private (string key, int index) ResolveKey(string key)
-        {
-            if (!Regex.IsMatch(key, @"^[\w]+(\[\d+\])?$"))
+            else
             {
-                throw new Exception($"The key '{key}' format is incorrect");
-            }
+                var findTokensCount = findTokens.Count();
+                if (index > findTokensCount)
+                    throw new IndexOutOfRangeException($"The key '{key}' index must be <= {findTokensCount}");
 
-            var numberStartSymbol = key.IndexOf('[');
+                if (index <= findTokensCount - 1)
+                    find = findTokens.ElementAt(index);
 
-            var index = 0;
-            string keyName = key;
-
-            if (numberStartSymbol > 0)
-            {
-                var numberStartIndex = numberStartSymbol + 1;
-
-                if (!int.TryParse(key.Substring(numberStartIndex, key.Length - 1 - numberStartIndex), out index))
+                if (find != null && find is GroupToken groupToken1)
                 {
-                    // TODO
+                    groupToken = groupToken1;
                 }
-
-                keyName = key.Substring(0, numberStartSymbol);
+                else
+                {
+                    // not found , break.
+                    break;
+                }
             }
-
-            return (keyName, index);
         }
 
+        return this;
+    }
+
+    /// <summary>
+    ///  Save the configuration content to specific file
+    /// </summary>
+    /// <param name="fileName">The file path</param>
+    /// <exception cref="ArgumentException"></exception>
+    public void Save(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            throw new ArgumentException($"'{nameof(fileName)}' cannot be null or whitespace.", nameof(fileName));
+        }
+
+        Save(fileName, Encoding.Default);
+    }
+
+    /// <summary>
+    ///  Save the configuration content to specific file
+    /// </summary>
+    /// <param name="fileName">The file path</param>
+    /// <param name="encoding">The file encoding</param>
+    /// <exception cref="ArgumentException"></exception>
+    /// <exception cref="ArgumentNullException"></exception>
+    public void Save(string fileName, Encoding encoding)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            throw new ArgumentException($"'{nameof(fileName)}' cannot be null or whitespace.", nameof(fileName));
+        }
+
+        if (encoding is null)
+        {
+            throw new ArgumentNullException(nameof(encoding));
+        }
+
+        using StringWriter sw = new StringWriter(new StringBuilder());
+
+        WriteTokenString(_tokens, sw, 0);
+        using (StreamWriter fsWriter = new StreamWriter(fileName, false, encoding))
+        {
+            fsWriter.NewLine = Environment.NewLine;
+            fsWriter.Write(sw);
+        }
+    }
+
+    /// <summary>
+    ///  Return configuration file content
+    /// </summary>
+    public override string ToString()
+    {
+        using StringWriter sw = new StringWriter(new StringBuilder());
+
+        WriteTokenString(_tokens, sw, 0);
+
+        return sw.GetStringBuilder().ToString();
+    }
+
+    private void WriteTokenString(IEnumerable<IToken> tokens, TextWriter textWriter, int level = 0)
+    {
+        var normalTokens = tokens.Where(x => x is CommentToken || x is ValueToken);
+        var groupTokens = tokens.Where(x => x is GroupToken);
+
+        textWriter.NewLine = Environment.NewLine;
+
+        foreach (var token in normalTokens)
+        {
+            if (token is CommentToken comment)
+                textWriter.WriteLine(PadLeftSpace(comment.ToString(), level));
+            else if (token is ValueToken vaue)
+                textWriter.WriteLine(PadLeftSpace(vaue.ToString(), level));
+        }
+
+        foreach (GroupToken group in groupTokens)
+        {
+            //if (group.Parent != null)
+            textWriter.WriteLine();
+
+            if (!string.IsNullOrWhiteSpace(group.Comment))
+                textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ # {group.Comment}", level));
+            else
+                textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ ", level));
+
+            WriteTokenString(group.Tokens, textWriter, level + 1);
+
+            // end 
+            textWriter.WriteLine(PadLeftSpace("}", level));
+        }
+    }
+
+    private string PadLeftSpace(string text, int level = 0)
+    {
+        return text.PadLeft(text.Length + (level * 2), ' ');
+    }
+
+    private IValueToken GetTokenFromPath(string keyPath)
+    {
+        var tokens = _tokens;
+
+        var paths = keyPath.Split(':');
+
+        IValueToken result = null;
+
+        foreach (var key in paths)
+        {
+            var (keyName, index) = ResolveKey(key);
+
+            result = FindToken(tokens, keyName, index);
+            if (result != null)
+            {
+                if (result is GroupToken groupToken)
+                    tokens = groupToken.Tokens.ToList();
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    private IList<IValueToken> GetTokensFromPath(string keyPath)
+    {
+        var tokens = _tokens;
+
+        var paths = keyPath.Split(':');
+
+        IEnumerable<IValueToken> result = null;
+
+        IValueToken current = null;
+
+        for (int i = 0; i < paths.Length; i++)
+        {
+            var (keyName, index) = ResolveKey(paths[i]);
+
+            if (i == paths.Length - 1)
+            {
+                result = FindTokens(tokens, keyName);
+            }
+            else
+            {
+                current = FindToken(tokens, keyName, index);
+
+                if (current != null && current is GroupToken groupToken)
+                {
+                    tokens = groupToken.Tokens.ToList();
+                }
+            }
+        }
+
+        return result.ToList();
+    }
+
+    private static IValueToken FindToken(IEnumerable<IToken> tokens, string key, int index = 0)
+    {
+        return tokens.Where(x => x is IValueToken valueToken && valueToken.Key == key).ElementAtOrDefault(index) as IValueToken;
+    }
+
+    private static IEnumerable<IValueToken> FindTokens(IEnumerable<IToken> tokens, string key)
+    {
+        return tokens.Where(x => x is IValueToken valueToken && valueToken.Key == key).Cast<IValueToken>().ToArray();
+    }
+
+    private (string key, int index) ResolveKey(string key)
+    {
+        if (!KeyRegex.IsMatch(key))
+        {
+            throw new Exception($"The key '{key}' format is incorrect");
+        }
+
+        var numberStartSymbol = key.IndexOf('[');
+
+        var index = 0;
+        string keyName = key;
+
+        if (numberStartSymbol > 0)
+        {
+            var numberStartIndex = numberStartSymbol + 1;
+
+            if (!int.TryParse(key.Substring(numberStartIndex, key.Length - 1 - numberStartIndex), out index))
+            {
+                // TODO
+            }
+
+            keyName = key.Substring(0, numberStartSymbol);
+        }
+
+        return (keyName, index);
     }
 }
