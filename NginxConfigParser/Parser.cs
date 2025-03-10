@@ -48,92 +48,106 @@ public class Parser
 
     private void ParseLine(string text, int lineIndex)
     {
-        var keyEndSymbol = text.IndexOf(' ');
-        var endSymbol = text.IndexOf(';');
-        var commendSymbol = text.IndexOf('#');
-        var groupStartSymbol = text.IndexOf('{');
-        var groupEndSymbol = text.IndexOf('}');
-
         if (text.Length == 0)
         {
             return;
         }
-
+        // comment row
         if (text[0] == '#')
         {
-            var commendToken = new CommentToken(text.Trim().TrimStart('#').Trim());
-            AddToken(commendToken);
+            var commentToken = new CommentToken(text.Trim().TrimStart('#').Trim());
+            AddToken(commentToken);
             return;
         }
-        else if (text[0] == '\'')
-        {
-            if (_currentToken != null && _currentToken is ValueToken valueToken)
-            {
-                valueToken.Value += text.Trim();
-
-                if (endSymbol > -1)
-                {
-                    valueToken.Value = valueToken.Value.TrimEnd(';').Replace("\'\'", null);
-                    AddToken(valueToken);
-                }
-
-                return;
-            }
-
-            throw new Exception("");
-        }
-        else if (text[0] == '}')
+        // group ending
+        if (text[0] == '}')
         {
             _currentGroupToken = _currentGroupToken?.Parent;
-
+    
             _currentToken = null;
-
+    
             return;
         }
-
-        string key = string.Empty;
-        string value = string.Empty;
-        string commend = string.Empty;
-
-        if (keyEndSymbol > -1)
-            key = text.Substring(0, keyEndSymbol);
-
-        if (groupStartSymbol > keyEndSymbol)
+    
+        var key = string.Empty;
+        var value = string.Empty;
+        var comment = string.Empty;
+        int keyEndSymbol = -1, groupStartSymbol = -1, commendSymbol = -1, endSymbol = -1;
+        bool matchKey = false,
+             matchValue = false,
+             matchEnd = false,
+             isBetweenSingleQuote = false,
+             isBetweenDoubleQuote = false;
+        for (var i = 0; i < text.Length; i++)
         {
-            value = text.Substring(keyEndSymbol + 1, groupStartSymbol - keyEndSymbol - 1);
+            switch (text[i])
+            {
+                // match single quote
+                case '\'':
+                    isBetweenSingleQuote = !isBetweenSingleQuote;
+                    break;
+                // continue if in single quote
+                case not '\'' when isBetweenSingleQuote:
+                    break;
+                // match double quote
+                case '"':
+                    isBetweenDoubleQuote = !isBetweenDoubleQuote;
+                    break;
+                // continue if in double quote
+                case not '"' when isBetweenDoubleQuote:
+                    break;
+                // match the token ending
+                case ';':
+                    endSymbol = i;
+                    value = text.Substring(keyEndSymbol + 1, endSymbol - keyEndSymbol - 1).Trim();
+                    matchEnd = true;
+                    matchValue = true;
+                    break;
+                // match the group beginning
+                case '{':
+                    groupStartSymbol = i;
+                    value = text.Substring(keyEndSymbol + 1, groupStartSymbol - keyEndSymbol - 1).Trim();
+                    matchValue = true;
+                    break;
+                // won't match group ending here
+                // match comment beginning
+                case '#':
+                    commendSymbol = i;
+                    comment = text.Substring(commendSymbol).Trim().TrimStart('#').Trim();
+                    goto CommentBreakCheck;
+                // match the first space to match token key
+                case ' ' when !matchKey:
+                    keyEndSymbol = i;
+                    matchKey = true;
+                    key = text.Substring(0, keyEndSymbol).Trim();
+                    break;
+            }
         }
-        else if (endSymbol > keyEndSymbol)
-        {
-            value = text.Substring(keyEndSymbol + 1, endSymbol - keyEndSymbol - 1);
-        }
-        else if (endSymbol == -1)
-        {
-            value = text.Substring(keyEndSymbol + 1);
-        }
-
-        if (commendSymbol > keyEndSymbol)
-            commend = text.Substring(commendSymbol + 1).Trim().TrimStart('#').Trim();
-
+    
+        CommentBreakCheck:
+        // WARNING: Here you need to consider whether to support cross-line quote mark pairs
+        if (isBetweenSingleQuote || isBetweenDoubleQuote)
+            throw new Exception($"Unpaired quote detected at line {lineIndex+1}!");
         if (groupStartSymbol > -1)
         {
-            var groupToken = new GroupToken(_currentGroupToken, key, value, commend);
+            var groupToken = new GroupToken(_currentGroupToken, key, value, comment);
             AddToken(groupToken);
             _currentGroupToken = groupToken;
             return;
         }
-
+    
         if (groupStartSymbol == -1 && endSymbol == -1)
         {
-            _currentToken = new ValueToken(_currentGroupToken, key, value, commend);
+            _currentToken = new ValueToken(_currentGroupToken, key, value, comment);
             return;
         }
-
+    
         if (endSymbol > -1)
         {
-            AddToken(new ValueToken(_currentGroupToken, key, value?.Trim(), commend));
+            AddToken(new ValueToken(_currentGroupToken, key, value?.Trim(), comment));
             return;
         }
-
-        throw new Exception("");
+    
+        throw new Exception("Some thing wrong");
     }
 }
