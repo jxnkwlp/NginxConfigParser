@@ -8,16 +8,21 @@ using System.Text.RegularExpressions;
 namespace NginxConfigParser;
 
 /// <summary>
-///  Represents an nginx configuration file operation object.
+/// Reads, builds, and writes nginx configuration files.
+/// Key paths use colon-separated segments with optional indexes, e.g. <c>http:server[1]:root</c>.
 /// </summary>
 public class NginxConfig
 {
     private static readonly Regex KeyRegex = new(@"^[\w]+(\[\d+\])?$");
+    private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
     private readonly Parser _parser;
 
     private IList<IToken> _tokens = new List<IToken>();
 
+    /// <summary>
+    /// Initializes a new instance from an existing parser.
+    /// </summary>
     protected NginxConfig(Parser parser)
     {
         _parser = parser;
@@ -26,7 +31,7 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Create an new
+    /// Creates an empty configuration.
     /// </summary>
     public static NginxConfig Create()
     {
@@ -36,12 +41,12 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Load from specific file
+    /// Loads configuration from a file path.
     /// </summary>
-    /// <param name="fileName">The file path</param>
-    /// <returns><see cref="NginxConfig"/></returns>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="FileNotFoundException"></exception>
+    /// <param name="fileName">Path to the nginx config file.</param>
+    /// <returns>The loaded configuration.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="fileName"/> is null or whitespace.</exception>
+    /// <exception cref="FileNotFoundException">Thrown when the file does not exist.</exception>
     public static NginxConfig LoadFrom(string fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName))
@@ -54,19 +59,17 @@ public class NginxConfig
             throw new FileNotFoundException(fileName);
         }
 
-        // var fs = new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite);
-
         var content = File.ReadAllText(fileName);
 
         return Load(content);
     }
 
     /// <summary>
-    ///  Load from file content
+    /// Loads configuration from text content.
     /// </summary>
-    /// <param name="content">The string of file content</param>
-    /// <returns><see cref="NginxConfig"/></returns>
-    /// <exception cref="ArgumentNullException"></exception>
+    /// <param name="content">Nginx config text.</param>
+    /// <returns>The loaded configuration.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="content"/> is null.</exception>
     public static NginxConfig Load(string content)
     {
         if (content is null)
@@ -86,15 +89,15 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Get all values
+    /// Returns all root-level tokens.
     /// </summary>
     public IEnumerable<IToken> GetTokens() => _tokens;
 
     /// <summary>
-    ///  Read value from given the key path.
-    ///  if the key not exist, will return null.
+    /// Gets a single token by key path, or null if not found.
     /// </summary>
-    /// <exception cref="ArgumentException"></exception>
+    /// <param name="keyPath">Colon-separated key path, e.g. <c>http:server:listen</c>.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyPath"/> is null or whitespace.</exception>
     public IValueToken GetToken(string keyPath)
     {
         if (string.IsNullOrWhiteSpace(keyPath))
@@ -106,9 +109,11 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Read value list from given the key path.
+    /// Gets all tokens matching the key path (for repeated directives).
     /// </summary>
-    /// <exception cref="ArgumentException"></exception>
+    /// <param name="keyPath">Colon-separated key path, e.g. <c>http:include</c>.</param>
+    /// <returns>Matching tokens, or an empty list when none are found.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyPath"/> is null or whitespace.</exception>
     public IList<IValueToken> GetTokens(string keyPath)
     {
         if (string.IsNullOrWhiteSpace(keyPath))
@@ -120,9 +125,10 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Read all values from specific group key
+    /// Gets a root-level group block by name, or null if not found.
     /// </summary>
-    /// <exception cref="ArgumentException"></exception>
+    /// <param name="key">Group name, e.g. <c>http</c> or <c>events</c>.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> is null or whitespace.</exception>
     public GroupToken GetGroup(string key)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -136,10 +142,10 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Read value from given the key path.
-    ///  if the key not exist, will return null.
+    /// Gets a token by key path, or null if not found.
     /// </summary>
-    /// <exception cref="ArgumentException"></exception>
+    /// <param name="keyPath">Colon-separated key path, e.g. <c>http:server[1]:root</c>.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyPath"/> is null or whitespace.</exception>
     public IValueToken this[string keyPath]
     {
         get
@@ -154,14 +160,15 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Add or update value by the key path
+    /// Adds or updates a value at the key path. Creates missing parent groups as needed.
     /// </summary>
-    /// <param name="keyPath">The key path</param>
-    /// <param name="value">The string value</param>
-    /// <param name="addAsGroup">Add as group when key path not found</param>
-    /// <param name="comment">The comment</param>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="IndexOutOfRangeException"></exception>
+    /// <param name="keyPath">Colon-separated key path.</param>
+    /// <param name="value">Directive value.</param>
+    /// <param name="addAsGroup">When true, creates a group block instead of a simple value.</param>
+    /// <param name="comment">Optional inline comment.</param>
+    /// <returns>This instance for chaining.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyPath"/> is null or whitespace.</exception>
+    /// <exception cref="IndexOutOfRangeException">Thrown when a path index is out of range.</exception>
     public NginxConfig AddOrUpdate(string keyPath, string value, bool addAsGroup = false, string comment = null)
     {
         if (string.IsNullOrWhiteSpace(keyPath))
@@ -179,7 +186,7 @@ public class NginxConfig
 
         for (int i = 0; i < length; i++)
         {
-            var (key, index) = ResolveKey(paths[i]);
+            var (key, index, _) = ResolveKey(paths[i]);
 
             IToken find = null;
             IEnumerable<IToken> findTokens;
@@ -247,10 +254,12 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Remove the value by key path
+    /// Removes tokens at the key path. With an index, removes one item; without, removes all matches.
     /// </summary>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="IndexOutOfRangeException"></exception>
+    /// <param name="keyPath">Colon-separated key path, e.g. <c>http:include[1]</c>.</param>
+    /// <returns>This instance for chaining.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyPath"/> is null or whitespace.</exception>
+    /// <exception cref="IndexOutOfRangeException">Thrown when a path index is out of range.</exception>
     public NginxConfig Remove(string keyPath)
     {
         if (string.IsNullOrWhiteSpace(keyPath))
@@ -268,7 +277,7 @@ public class NginxConfig
 
         for (int i = 0; i < length; i++)
         {
-            var (key, index) = ResolveKey(paths[i]);
+            var (key, index, hasIndex) = ResolveKey(paths[i]);
 
             IToken find = null;
             IEnumerable<IToken> findTokens;
@@ -280,19 +289,21 @@ public class NginxConfig
 
             if (i == length - 1)
             {
-                // remove
-                if (groupToken == null)
+                IList<IToken> targetList = groupToken == null ? tokens : groupToken.Tokens;
+
+                if (hasIndex)
                 {
-                    foreach (var item in findTokens)
-                    {
-                        tokens.Remove(item);
-                    }
+                    var findTokensCount = findTokens.Count();
+                    if (index < 0 || index >= findTokensCount)
+                        throw new IndexOutOfRangeException($"The key '{key}' index must be >= 0 and < {findTokensCount}");
+
+                    targetList.Remove(findTokens.ElementAt(index));
                 }
                 else
                 {
                     foreach (var item in findTokens)
                     {
-                        groupToken.Tokens.Remove(item);
+                        targetList.Remove(item);
                     }
                 }
             }
@@ -321,10 +332,10 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Save the configuration content to specific file
+    /// Saves the configuration to a file using UTF-8 without BOM.
     /// </summary>
-    /// <param name="fileName">The file path</param>
-    /// <exception cref="ArgumentException"></exception>
+    /// <param name="fileName">Output file path.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="fileName"/> is null or whitespace.</exception>
     public void Save(string fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName))
@@ -332,16 +343,16 @@ public class NginxConfig
             throw new ArgumentException($"'{nameof(fileName)}' cannot be null or whitespace.", nameof(fileName));
         }
 
-        Save(fileName, Encoding.Default);
+        Save(fileName, Utf8NoBom);
     }
 
     /// <summary>
-    ///  Save the configuration content to specific file
+    /// Saves the configuration to a file with the given encoding.
     /// </summary>
-    /// <param name="fileName">The file path</param>
-    /// <param name="encoding">The file encoding</param>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="ArgumentNullException"></exception>
+    /// <param name="fileName">Output file path.</param>
+    /// <param name="encoding">Text encoding to use.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="fileName"/> is null or whitespace.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="encoding"/> is null.</exception>
     public void Save(string fileName, Encoding encoding)
     {
         if (string.IsNullOrWhiteSpace(fileName))
@@ -365,7 +376,7 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Return configuration file content
+    /// Returns the configuration as nginx config text.
     /// </summary>
     public override string ToString()
     {
@@ -378,33 +389,38 @@ public class NginxConfig
 
     private void WriteTokenString(IEnumerable<IToken> tokens, TextWriter textWriter, int level = 0)
     {
-        var normalTokens = tokens.Where(x => x is CommentToken || x is ValueToken);
-        var groupTokens = tokens.Where(x => x is GroupToken);
-
         textWriter.NewLine = Environment.NewLine;
 
-        foreach (var token in normalTokens)
+        var tokenList = tokens as IList<IToken> ?? tokens.ToList();
+        var wroteAny = false;
+
+        foreach (var token in tokenList)
         {
             if (token is CommentToken comment)
+            {
                 textWriter.WriteLine(PadLeftSpace(comment.ToString(), level));
-            else if (token is ValueToken vaue)
-                textWriter.WriteLine(PadLeftSpace(vaue.ToString(), level));
-        }
+                wroteAny = true;
+            }
+            else if (token is ValueToken value)
+            {
+                textWriter.WriteLine(PadLeftSpace(value.ToString(), level));
+                wroteAny = true;
+            }
+            else if (token is GroupToken group)
+            {
+                if (wroteAny)
+                    textWriter.WriteLine();
 
-        foreach (GroupToken group in groupTokens)
-        {
-            //if (group.Parent != null)
-            textWriter.WriteLine();
+                if (!string.IsNullOrWhiteSpace(group.Comment))
+                    textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ # {group.Comment}", level));
+                else
+                    textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ ", level));
 
-            if (!string.IsNullOrWhiteSpace(group.Comment))
-                textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ # {group.Comment}", level));
-            else
-                textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ ", level));
+                WriteTokenString(group.Tokens, textWriter, level + 1);
 
-            WriteTokenString(group.Tokens, textWriter, level + 1);
-
-            // end 
-            textWriter.WriteLine(PadLeftSpace("}", level));
+                textWriter.WriteLine(PadLeftSpace("}", level));
+                wroteAny = true;
+            }
         }
     }
 
@@ -423,7 +439,7 @@ public class NginxConfig
 
         foreach (var key in paths)
         {
-            var (keyName, index) = ResolveKey(key);
+            var (keyName, index, _) = ResolveKey(key);
 
             result = FindToken(tokens, keyName, index);
             if (result != null)
@@ -446,13 +462,13 @@ public class NginxConfig
 
         var paths = keyPath.Split(':');
 
-        IEnumerable<IValueToken> result = null;
+        IEnumerable<IValueToken> result = Array.Empty<IValueToken>();
 
         IValueToken current = null;
 
         for (int i = 0; i < paths.Length; i++)
         {
-            var (keyName, index) = ResolveKey(paths[i]);
+            var (keyName, index, _) = ResolveKey(paths[i]);
 
             if (i == paths.Length - 1)
             {
@@ -465,6 +481,10 @@ public class NginxConfig
                 if (current != null && current is GroupToken groupToken)
                 {
                     tokens = groupToken.Tokens.ToList();
+                }
+                else
+                {
+                    return new List<IValueToken>();
                 }
             }
         }
@@ -482,7 +502,7 @@ public class NginxConfig
         return tokens.Where(x => x is IValueToken valueToken && valueToken.Key == key).Cast<IValueToken>().ToArray();
     }
 
-    private (string key, int index) ResolveKey(string key)
+    private (string key, int index, bool hasIndex) ResolveKey(string key)
     {
         if (!KeyRegex.IsMatch(key))
         {
@@ -493,19 +513,21 @@ public class NginxConfig
 
         var index = 0;
         string keyName = key;
+        var hasIndex = false;
 
         if (numberStartSymbol > 0)
         {
+            hasIndex = true;
             var numberStartIndex = numberStartSymbol + 1;
 
             if (!int.TryParse(key.Substring(numberStartIndex, key.Length - 1 - numberStartIndex), out index))
             {
-                // TODO
+                throw new Exception($"The key '{key}' index format is incorrect");
             }
 
             keyName = key.Substring(0, numberStartSymbol);
         }
 
-        return (keyName, index);
+        return (keyName, index, hasIndex);
     }
 }
