@@ -8,7 +8,8 @@ using System.Text.RegularExpressions;
 namespace NginxConfigParser;
 
 /// <summary>
-///  Represents an nginx configuration file operation object.
+/// Reads, builds, and writes nginx configuration files.
+/// Key paths use colon-separated segments with optional indexes, e.g. <c>http:server[1]:root</c>.
 /// </summary>
 public class NginxConfig
 {
@@ -19,6 +20,9 @@ public class NginxConfig
 
     private IList<IToken> _tokens = new List<IToken>();
 
+    /// <summary>
+    /// Initializes a new instance from an existing parser.
+    /// </summary>
     protected NginxConfig(Parser parser)
     {
         _parser = parser;
@@ -27,7 +31,7 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Create an new
+    /// Creates an empty configuration.
     /// </summary>
     public static NginxConfig Create()
     {
@@ -37,12 +41,12 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Load from specific file
+    /// Loads configuration from a file path.
     /// </summary>
-    /// <param name="fileName">The file path</param>
-    /// <returns><see cref="NginxConfig"/></returns>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="FileNotFoundException"></exception>
+    /// <param name="fileName">Path to the nginx config file.</param>
+    /// <returns>The loaded configuration.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="fileName"/> is null or whitespace.</exception>
+    /// <exception cref="FileNotFoundException">Thrown when the file does not exist.</exception>
     public static NginxConfig LoadFrom(string fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName))
@@ -61,11 +65,11 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Load from file content
+    /// Loads configuration from text content.
     /// </summary>
-    /// <param name="content">The string of file content</param>
-    /// <returns><see cref="NginxConfig"/></returns>
-    /// <exception cref="ArgumentNullException"></exception>
+    /// <param name="content">Nginx config text.</param>
+    /// <returns>The loaded configuration.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="content"/> is null.</exception>
     public static NginxConfig Load(string content)
     {
         if (content is null)
@@ -85,15 +89,15 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Get all values
+    /// Returns all root-level tokens.
     /// </summary>
     public IEnumerable<IToken> GetTokens() => _tokens;
 
     /// <summary>
-    ///  Read value from given the key path.
-    ///  if the key not exist, will return null.
+    /// Gets a single token by key path, or null if not found.
     /// </summary>
-    /// <exception cref="ArgumentException"></exception>
+    /// <param name="keyPath">Colon-separated key path, e.g. <c>http:server:listen</c>.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyPath"/> is null or whitespace.</exception>
     public IValueToken GetToken(string keyPath)
     {
         if (string.IsNullOrWhiteSpace(keyPath))
@@ -105,9 +109,11 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Read value list from given the key path.
+    /// Gets all tokens matching the key path (for repeated directives).
     /// </summary>
-    /// <exception cref="ArgumentException"></exception>
+    /// <param name="keyPath">Colon-separated key path, e.g. <c>http:include</c>.</param>
+    /// <returns>Matching tokens, or an empty list when none are found.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyPath"/> is null or whitespace.</exception>
     public IList<IValueToken> GetTokens(string keyPath)
     {
         if (string.IsNullOrWhiteSpace(keyPath))
@@ -119,9 +125,10 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Read all values from specific group key
+    /// Gets a root-level group block by name, or null if not found.
     /// </summary>
-    /// <exception cref="ArgumentException"></exception>
+    /// <param name="key">Group name, e.g. <c>http</c> or <c>events</c>.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="key"/> is null or whitespace.</exception>
     public GroupToken GetGroup(string key)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -135,10 +142,10 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Read value from given the key path.
-    ///  if the key not exist, will return null.
+    /// Gets a token by key path, or null if not found.
     /// </summary>
-    /// <exception cref="ArgumentException"></exception>
+    /// <param name="keyPath">Colon-separated key path, e.g. <c>http:server[1]:root</c>.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyPath"/> is null or whitespace.</exception>
     public IValueToken this[string keyPath]
     {
         get
@@ -153,14 +160,15 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Add or update value by the key path
+    /// Adds or updates a value at the key path. Creates missing parent groups as needed.
     /// </summary>
-    /// <param name="keyPath">The key path</param>
-    /// <param name="value">The string value</param>
-    /// <param name="addAsGroup">Add as group when key path not found</param>
-    /// <param name="comment">The comment</param>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="IndexOutOfRangeException"></exception>
+    /// <param name="keyPath">Colon-separated key path.</param>
+    /// <param name="value">Directive value.</param>
+    /// <param name="addAsGroup">When true, creates a group block instead of a simple value.</param>
+    /// <param name="comment">Optional inline comment.</param>
+    /// <returns>This instance for chaining.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyPath"/> is null or whitespace.</exception>
+    /// <exception cref="IndexOutOfRangeException">Thrown when a path index is out of range.</exception>
     public NginxConfig AddOrUpdate(string keyPath, string value, bool addAsGroup = false, string comment = null)
     {
         if (string.IsNullOrWhiteSpace(keyPath))
@@ -246,10 +254,12 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Remove the value by key path
+    /// Removes tokens at the key path. With an index, removes one item; without, removes all matches.
     /// </summary>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="IndexOutOfRangeException"></exception>
+    /// <param name="keyPath">Colon-separated key path, e.g. <c>http:include[1]</c>.</param>
+    /// <returns>This instance for chaining.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="keyPath"/> is null or whitespace.</exception>
+    /// <exception cref="IndexOutOfRangeException">Thrown when a path index is out of range.</exception>
     public NginxConfig Remove(string keyPath)
     {
         if (string.IsNullOrWhiteSpace(keyPath))
@@ -322,10 +332,10 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Save the configuration content to specific file
+    /// Saves the configuration to a file using UTF-8 without BOM.
     /// </summary>
-    /// <param name="fileName">The file path</param>
-    /// <exception cref="ArgumentException"></exception>
+    /// <param name="fileName">Output file path.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="fileName"/> is null or whitespace.</exception>
     public void Save(string fileName)
     {
         if (string.IsNullOrWhiteSpace(fileName))
@@ -337,12 +347,12 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Save the configuration content to specific file
+    /// Saves the configuration to a file with the given encoding.
     /// </summary>
-    /// <param name="fileName">The file path</param>
-    /// <param name="encoding">The file encoding</param>
-    /// <exception cref="ArgumentException"></exception>
-    /// <exception cref="ArgumentNullException"></exception>
+    /// <param name="fileName">Output file path.</param>
+    /// <param name="encoding">Text encoding to use.</param>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="fileName"/> is null or whitespace.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="encoding"/> is null.</exception>
     public void Save(string fileName, Encoding encoding)
     {
         if (string.IsNullOrWhiteSpace(fileName))
@@ -366,7 +376,7 @@ public class NginxConfig
     }
 
     /// <summary>
-    ///  Return configuration file content
+    /// Returns the configuration as nginx config text.
     /// </summary>
     public override string ToString()
     {
