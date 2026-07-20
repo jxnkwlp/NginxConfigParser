@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;netstandard2.1;net9.0;net10.0</TargetFrameworks>
     <Authors>Passingwind</Authors>
-    <Version>0.1.4</Version>
+    <Version>0.2.0</Version>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/jxnkwlp/NginxConfigParser</PackageProjectUrl>
     <RepositoryUrl>https://github.com/jxnkwlp/NginxConfigParser</RepositoryUrl>
