@@ -76,7 +76,3 @@ public class GroupToken : IValueToken
         return $"{Key} {Value} => [{Tokens.Count}]";
     }
 }
-
-public class RootToken
-{
-}

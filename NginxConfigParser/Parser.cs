@@ -24,7 +24,7 @@ public class Parser
         var lineIndex = 0;
 
         StringReader sr = new StringReader(_content);
-        string line = string.Empty;
+        string line;
 
         while ((line = sr.ReadLine()) != null)
         {
@@ -50,9 +50,8 @@ public class Parser
     {
         var keyEndSymbol = text.IndexOf(' ');
         var endSymbol = text.IndexOf(';');
-        var commendSymbol = text.IndexOf('#');
+        var commentSymbol = text.IndexOf('#');
         var groupStartSymbol = text.IndexOf('{');
-        var groupEndSymbol = text.IndexOf('}');
 
         if (text.Length == 0)
         {
@@ -61,8 +60,8 @@ public class Parser
 
         if (text[0] == '#')
         {
-            var commendToken = new CommentToken(text.Trim().TrimStart('#').Trim());
-            AddToken(commendToken);
+            var commentToken = new CommentToken(text.Trim().TrimStart('#').Trim());
+            AddToken(commentToken);
             return;
         }
         else if (text[0] == '\'')
@@ -80,7 +79,7 @@ public class Parser
                 return;
             }
 
-            throw new Exception("");
+            throw new Exception($"Unexpected quoted continuation at line {lineIndex}: {text}");
         }
         else if (text[0] == '}')
         {
@@ -93,7 +92,7 @@ public class Parser
 
         string key = string.Empty;
         string value = string.Empty;
-        string commend = string.Empty;
+        string comment = string.Empty;
 
         if (keyEndSymbol > -1)
             key = text.Substring(0, keyEndSymbol);
@@ -111,12 +110,12 @@ public class Parser
             value = text.Substring(keyEndSymbol + 1);
         }
 
-        if (commendSymbol > keyEndSymbol)
-            commend = text.Substring(commendSymbol + 1).Trim().TrimStart('#').Trim();
+        if (commentSymbol > keyEndSymbol)
+            comment = text.Substring(commentSymbol + 1).Trim().TrimStart('#').Trim();
 
         if (groupStartSymbol > -1)
         {
-            var groupToken = new GroupToken(_currentGroupToken, key, value, commend);
+            var groupToken = new GroupToken(_currentGroupToken, key, value, comment);
             AddToken(groupToken);
             _currentGroupToken = groupToken;
             return;
@@ -124,16 +123,16 @@ public class Parser
 
         if (groupStartSymbol == -1 && endSymbol == -1)
         {
-            _currentToken = new ValueToken(_currentGroupToken, key, value, commend);
+            _currentToken = new ValueToken(_currentGroupToken, key, value, comment);
             return;
         }
 
         if (endSymbol > -1)
         {
-            AddToken(new ValueToken(_currentGroupToken, key, value?.Trim(), commend));
+            AddToken(new ValueToken(_currentGroupToken, key, value?.Trim(), comment));
             return;
         }
 
-        throw new Exception("");
+        throw new Exception($"Unable to parse line {lineIndex}: {text}");
     }
 }

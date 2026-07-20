@@ -13,6 +13,7 @@ namespace NginxConfigParser;
 public class NginxConfig
 {
     private static readonly Regex KeyRegex = new(@"^[\w]+(\[\d+\])?$");
+    private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
     private readonly Parser _parser;
 
@@ -53,8 +54,6 @@ public class NginxConfig
         {
             throw new FileNotFoundException(fileName);
         }
-
-        // var fs = new FileStream(fileName, FileMode.Open, FileAccess.ReadWrite);
 
         var content = File.ReadAllText(fileName);
 
@@ -179,7 +178,7 @@ public class NginxConfig
 
         for (int i = 0; i < length; i++)
         {
-            var (key, index) = ResolveKey(paths[i]);
+            var (key, index, _) = ResolveKey(paths[i]);
 
             IToken find = null;
             IEnumerable<IToken> findTokens;
@@ -268,7 +267,7 @@ public class NginxConfig
 
         for (int i = 0; i < length; i++)
         {
-            var (key, index) = ResolveKey(paths[i]);
+            var (key, index, hasIndex) = ResolveKey(paths[i]);
 
             IToken find = null;
             IEnumerable<IToken> findTokens;
@@ -280,19 +279,21 @@ public class NginxConfig
 
             if (i == length - 1)
             {
-                // remove
-                if (groupToken == null)
+                IList<IToken> targetList = groupToken == null ? tokens : groupToken.Tokens;
+
+                if (hasIndex)
                 {
-                    foreach (var item in findTokens)
-                    {
-                        tokens.Remove(item);
-                    }
+                    var findTokensCount = findTokens.Count();
+                    if (index < 0 || index >= findTokensCount)
+                        throw new IndexOutOfRangeException($"The key '{key}' index must be >= 0 and < {findTokensCount}");
+
+                    targetList.Remove(findTokens.ElementAt(index));
                 }
                 else
                 {
                     foreach (var item in findTokens)
                     {
-                        groupToken.Tokens.Remove(item);
+                        targetList.Remove(item);
                     }
                 }
             }
@@ -332,7 +333,7 @@ public class NginxConfig
             throw new ArgumentException($"'{nameof(fileName)}' cannot be null or whitespace.", nameof(fileName));
         }
 
-        Save(fileName, Encoding.Default);
+        Save(fileName, Utf8NoBom);
     }
 
     /// <summary>
@@ -378,33 +379,38 @@ public class NginxConfig
 
     private void WriteTokenString(IEnumerable<IToken> tokens, TextWriter textWriter, int level = 0)
     {
-        var normalTokens = tokens.Where(x => x is CommentToken || x is ValueToken);
-        var groupTokens = tokens.Where(x => x is GroupToken);
-
         textWriter.NewLine = Environment.NewLine;
 
-        foreach (var token in normalTokens)
+        var tokenList = tokens as IList<IToken> ?? tokens.ToList();
+        var wroteAny = false;
+
+        foreach (var token in tokenList)
         {
             if (token is CommentToken comment)
+            {
                 textWriter.WriteLine(PadLeftSpace(comment.ToString(), level));
-            else if (token is ValueToken vaue)
-                textWriter.WriteLine(PadLeftSpace(vaue.ToString(), level));
-        }
+                wroteAny = true;
+            }
+            else if (token is ValueToken value)
+            {
+                textWriter.WriteLine(PadLeftSpace(value.ToString(), level));
+                wroteAny = true;
+            }
+            else if (token is GroupToken group)
+            {
+                if (wroteAny)
+                    textWriter.WriteLine();
 
-        foreach (GroupToken group in groupTokens)
-        {
-            //if (group.Parent != null)
-            textWriter.WriteLine();
+                if (!string.IsNullOrWhiteSpace(group.Comment))
+                    textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ # {group.Comment}", level));
+                else
+                    textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ ", level));
 
-            if (!string.IsNullOrWhiteSpace(group.Comment))
-                textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ # {group.Comment}", level));
-            else
-                textWriter.WriteLine(PadLeftSpace($"{group.Key}  {group.Value} {{ ", level));
+                WriteTokenString(group.Tokens, textWriter, level + 1);
 
-            WriteTokenString(group.Tokens, textWriter, level + 1);
-
-            // end 
-            textWriter.WriteLine(PadLeftSpace("}", level));
+                textWriter.WriteLine(PadLeftSpace("}", level));
+                wroteAny = true;
+            }
         }
     }
 
@@ -423,7 +429,7 @@ public class NginxConfig
 
         foreach (var key in paths)
         {
-            var (keyName, index) = ResolveKey(key);
+            var (keyName, index, _) = ResolveKey(key);
 
             result = FindToken(tokens, keyName, index);
             if (result != null)
@@ -446,13 +452,13 @@ public class NginxConfig
 
         var paths = keyPath.Split(':');
 
-        IEnumerable<IValueToken> result = null;
+        IEnumerable<IValueToken> result = Array.Empty<IValueToken>();
 
         IValueToken current = null;
 
         for (int i = 0; i < paths.Length; i++)
         {
-            var (keyName, index) = ResolveKey(paths[i]);
+            var (keyName, index, _) = ResolveKey(paths[i]);
 
             if (i == paths.Length - 1)
             {
@@ -465,6 +471,10 @@ public class NginxConfig
                 if (current != null && current is GroupToken groupToken)
                 {
                     tokens = groupToken.Tokens.ToList();
+                }
+                else
+                {
+                    return new List<IValueToken>();
                 }
             }
         }
@@ -482,7 +492,7 @@ public class NginxConfig
         return tokens.Where(x => x is IValueToken valueToken && valueToken.Key == key).Cast<IValueToken>().ToArray();
     }
 
-    private (string key, int index) ResolveKey(string key)
+    private (string key, int index, bool hasIndex) ResolveKey(string key)
     {
         if (!KeyRegex.IsMatch(key))
         {
@@ -493,19 +503,21 @@ public class NginxConfig
 
         var index = 0;
         string keyName = key;
+        var hasIndex = false;
 
         if (numberStartSymbol > 0)
         {
+            hasIndex = true;
             var numberStartIndex = numberStartSymbol + 1;
 
             if (!int.TryParse(key.Substring(numberStartIndex, key.Length - 1 - numberStartIndex), out index))
             {
-                // TODO
+                throw new Exception($"The key '{key}' index format is incorrect");
             }
 
             keyName = key.Substring(0, numberStartSymbol);
         }
 
-        return (keyName, index);
+        return (keyName, index, hasIndex);
     }
 }
